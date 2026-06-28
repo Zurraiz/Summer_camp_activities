@@ -1,28 +1,68 @@
 // Leaderboard Dynamically Loaded Scoring Logic
 
+let currentLevel = '';
+let currentPeriod = 'daily';
+
 document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.getElementById('leaderboardBody');
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    
+    const header = document.querySelector('.leaderboard-header');
+    const levelTabs = document.querySelector('.leaderboard-header .filter-tabs');
+    const levelButtons = levelTabs ? levelTabs.querySelectorAll('.filter-btn') : [];
+
     if (!tableBody) return; // Exit if not on leaderboard page
-    
-    loadLeaderboard(''); // Load all by default
-    
-    // Wire up filter click actions
-    filterButtons.forEach(btn => {
+
+    const periodTabs = document.createElement('div');
+    periodTabs.className = 'filter-tabs leaderboard-period-tabs';
+    periodTabs.innerHTML = `
+        <button class="filter-btn active" data-period="daily">Daily</button>
+        <button class="filter-btn" data-period="weekly">Weekly</button>
+    `;
+
+    if (levelTabs && levelTabs.parentNode) {
+        levelTabs.parentNode.insertBefore(periodTabs, levelTabs);
+    } else if (header) {
+        header.insertBefore(periodTabs, header.firstChild);
+    }
+
+    const periodButtons = periodTabs.querySelectorAll('.filter-btn');
+    const scoreHeader = document.querySelector('.leaderboard-table thead th:last-child');
+
+    const updateScoreHeader = () => {
+        if (scoreHeader) {
+            scoreHeader.textContent = currentPeriod === 'weekly' ? 'Weekly Points' : "Today's Points";
+        }
+    };
+
+    updateScoreHeader();
+    loadLeaderboard(currentLevel);
+
+    periodButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            // Update active states
-            filterButtons.forEach(b => b.classList.remove('active'));
+            periodButtons.forEach(button => button.classList.remove('active'));
             btn.classList.add('active');
-            
-            const level = btn.dataset.level || '';
-            loadLeaderboard(level);
+
+            currentPeriod = btn.dataset.period || 'daily';
+            updateScoreHeader();
+            loadLeaderboard(currentLevel);
+        });
+    });
+
+    levelButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            levelButtons.forEach(button => button.classList.remove('active'));
+            btn.classList.add('active');
+
+            currentLevel = btn.dataset.level || '';
+            loadLeaderboard(currentLevel);
         });
     });
 });
 
 async function loadLeaderboard(level) {
     const tableBody = document.getElementById('leaderboardBody');
+    if (!tableBody) return;
+
+    const scoreField = currentPeriod === 'weekly' ? 'week_score' : 'today_score';
     tableBody.innerHTML = `
         <tr>
             <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 40px 0;">
@@ -32,7 +72,7 @@ async function loadLeaderboard(level) {
     `;
     
     try {
-        const response = await fetch(`/api/leaderboard?level=${level}`);
+        const response = await fetch(`/api/leaderboard?level=${encodeURIComponent(level || '')}&period=${currentPeriod}`);
         const data = await response.json();
         
         tableBody.innerHTML = '';
@@ -79,7 +119,7 @@ async function loadLeaderboard(level) {
                         </div>
                         <div class="podium-name" title="${second.name}">${second.name}</div>
                         <span class="level-badge level-${second.level.toLowerCase()}" style="font-size: 0.65rem; padding: 2px 8px; margin-bottom: 8px;">${second.level}</span>
-                        <div class="podium-points">${second.total_score} pts</div>
+                        <div class="podium-points">${second[scoreField] ?? 0} pts</div>
                     </div>
                 `;
             }
@@ -95,7 +135,7 @@ async function loadLeaderboard(level) {
                         </div>
                         <div class="podium-name" title="${first.name}">${first.name}</div>
                         <span class="level-badge level-${first.level.toLowerCase()}" style="font-size: 0.65rem; padding: 2px 8px; margin-bottom: 8px;">${first.level}</span>
-                        <div class="podium-points">${first.total_score} pts</div>
+                        <div class="podium-points">${first[scoreField] ?? 0} pts</div>
                     </div>
                 `;
             }
@@ -110,7 +150,7 @@ async function loadLeaderboard(level) {
                         </div>
                         <div class="podium-name" title="${third.name}">${third.name}</div>
                         <span class="level-badge level-${third.level.toLowerCase()}" style="font-size: 0.65rem; padding: 2px 8px; margin-bottom: 8px;">${third.level}</span>
-                        <div class="podium-points">${third.total_score} pts</div>
+                        <div class="podium-points">${third[scoreField] ?? 0} pts</div>
                     </div>
                 `;
             }
@@ -154,7 +194,7 @@ async function loadLeaderboard(level) {
                     </div>
                 </td>
                 <td>${levelHtml}</td>
-                <td class="points-val" style="text-align: right;">${student.total_score} pts</td>
+                <td class="points-val" style="text-align: right;">${student[scoreField] ?? 0} pts</td>
             `;
             tableBody.appendChild(row);
         });
@@ -170,3 +210,5 @@ async function loadLeaderboard(level) {
         `;
     }
 }
+
+setInterval(() => loadLeaderboard(currentLevel), 10000)

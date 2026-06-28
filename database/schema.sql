@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS students (
     level TEXT NOT NULL,
     total_score INTEGER DEFAULT 0,
     today_score INTEGER DEFAULT 0,
+    week_score INTEGER DEFAULT 0,
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     streak_days INTEGER DEFAULT 0,
     last_active_date TEXT DEFAULT NULL

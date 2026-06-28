@@ -1,8 +1,10 @@
 import os
+import json
 import sqlite3
+import time
 import pymysql
 from datetime import date
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, Response, stream_with_context
 from werkzeug.security import generate_password_hash, check_password_hash
 from config import Config
 
@@ -188,6 +190,18 @@ def get_student_rank(student_id):
     return len(students)
 
 
+def get_leaderboard_rows(level_filter='', period='daily'):
+    score_column = 'week_score' if period == 'weekly' else 'today_score'
+    if level_filter in ['Beginner', 'Intermediate', 'Advanced']:
+        return query_db(
+            f"SELECT name, today_score, week_score, level FROM students WHERE level = %s ORDER BY {score_column} DESC",
+            (level_filter,)
+        )
+    return query_db(
+        f"SELECT name, today_score, week_score, level FROM students ORDER BY {score_column} DESC"
+    )
+
+
 def update_streak(student_id):
     student = query_db("SELECT streak_days, last_active_date FROM students WHERE id = %s", (student_id,), one=True)
     if not student:
@@ -352,12 +366,24 @@ def wordcloud():
 @app.route('/api/leaderboard')
 def api_leaderboard():
     level_filter = request.args.get('level', '')
-    if level_filter in ['Beginner', 'Intermediate', 'Advanced']:
-        students = query_db("SELECT name, total_score, today_score, level FROM students WHERE level = %s ORDER BY total_score DESC", (level_filter,))
-    else:
-        students = query_db("SELECT name, total_score, today_score, level FROM students ORDER BY total_score DESC")
-        
+    period = request.args.get('period', 'daily')
+    students = get_leaderboard_rows(level_filter, period)
+
     return jsonify(students if students else [])
+
+
+@app.route('/api/leaderboard/stream')
+def api_leaderboard_stream():
+    level_filter = request.args.get('level', '')
+    period = request.args.get('period', 'daily')
+
+    def generate():
+        while True:
+            students = get_leaderboard_rows(level_filter, period)
+            yield f"data: {json.dumps(students if students else [])}\n\n"
+            time.sleep(5)
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/api/students')
 def api_students():
@@ -387,8 +413,8 @@ def api_quiz_submit():
     
     # Update student points
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s WHERE id = %s",
-        (points_awarded, points_awarded, session['student_id'])
+        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        (points_awarded, points_awarded, points_awarded, session['student_id'])
     )
     
     # Record point event
@@ -415,16 +441,33 @@ def api_award_points():
         
     # Update student points
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s WHERE id = %s",
-        (points, points, student_id)
+        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        (points, points, points, student_id)
     )
-    
+
     # Record point event
     query_db(
         "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, %s, %s, %s)",
         (student_id, points, event_type, description)
     )
-    
+
+    return jsonify({'success': True})
+
+@app.route('/api/reset-today-scores', methods=['POST'])
+def api_reset_today_scores():
+    if session.get('role') != 'instructor':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    query_db("UPDATE students SET today_score = 0")
+    return jsonify({'success': True})
+
+
+@app.route('/api/reset-week-scores', methods=['POST'])
+def api_reset_week_scores():
+    if session.get('role') != 'instructor':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    query_db("UPDATE students SET week_score = 0")
     return jsonify({'success': True})
 
 @app.route('/api/wordcloud/words', methods=['GET', 'POST'])
@@ -457,7 +500,7 @@ def api_wordcloud_words():
             if session.get('role') == 'student' and 'student_id' in session:
                 student_id = session['student_id']
                 query_db(
-                    "UPDATE students SET total_score = total_score + 5, today_score = today_score + 5 WHERE id = %s",
+                    "UPDATE students SET total_score = total_score + 5, today_score = today_score + 5, week_score = week_score + 5 WHERE id = %s",
                     (student_id,)
                 )
                 query_db(
@@ -518,8 +561,8 @@ def api_buzz_respond():
     )
 
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s WHERE id = %s",
-        (points_earned, points_earned, session['student_id'])
+        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        (points_earned, points_earned, points_earned, session['student_id'])
     )
 
     if points_earned > 0:
