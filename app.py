@@ -487,13 +487,9 @@ def api_buzz_create():
     return jsonify({'success': True, 'id': session_id})
 
 
-@app.route('/api/buzz/session/', methods=['GET'])
-def api_buzz_session():
-    buzz_session_id = request.args.get('session_id') or request.args.get('id')
-    if buzz_session_id:
-        buzz_session = query_db("SELECT * FROM buzz_sessions WHERE id = %s", (buzz_session_id,), one=True)
-    else:
-        buzz_session = query_db("SELECT * FROM buzz_sessions ORDER BY started_at DESC LIMIT 1", one=True)
+@app.route('/api/buzz/session/<int:session_id>', methods=['GET'])
+def api_buzz_session(session_id):
+    buzz_session = query_db("SELECT * FROM buzz_sessions WHERE id = %s", (session_id,), one=True)
 
     if not buzz_session:
         return jsonify({'error': 'Session not found'}), 404
@@ -526,18 +522,19 @@ def api_buzz_respond():
         (points_earned, points_earned, session['student_id'])
     )
 
+    if points_earned > 0:
+        query_db(
+            "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, %s, %s, %s)",
+            (session['student_id'], points_earned, 'BrainBuzz', 'Brain Buzz answer')
+        )
+
     return jsonify({'success': True})
 
 
-@app.route('/api/buzz/end/', methods=['POST'])
-def api_buzz_end():
+@app.route('/api/buzz/end/<int:session_id>', methods=['POST'])
+def api_buzz_end(session_id):
     if session.get('role') != 'instructor' or 'instructor_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-
-    data = request.get_json() or {}
-    session_id = data.get('session_id')
-    if not session_id:
-        return jsonify({'error': 'Missing session_id'}), 400
 
     query_db(
         "UPDATE buzz_sessions SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE id = %s",
