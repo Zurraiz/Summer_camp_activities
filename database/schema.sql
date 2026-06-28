@@ -6,7 +6,9 @@ CREATE TABLE IF NOT EXISTS students (
     level TEXT NOT NULL,
     total_score INTEGER DEFAULT 0,
     today_score INTEGER DEFAULT 0,
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    streak_days INTEGER DEFAULT 0,
+    last_active_date TEXT DEFAULT NULL
 );
 
 -- Instructors table
@@ -39,4 +41,34 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
     option_d TEXT NOT NULL,
     correct_option TEXT NOT NULL,
     difficulty TEXT DEFAULT 'Intermediate'
+);
+
+-- Brain Buzz Sessions table
+CREATE TABLE IF NOT EXISTS buzz_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instructor_id INTEGER,
+    level TEXT,
+    status TEXT DEFAULT 'waiting',
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP
+);
+
+-- Brain Buzz Responses table
+CREATE TABLE IF NOT EXISTS buzz_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
+    student_id INTEGER,
+    question_index INTEGER,
+    answer TEXT,
+    is_correct INTEGER DEFAULT 0,
+    points_earned INTEGER DEFAULT 0,
+    responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Wordcloud Words table
+CREATE TABLE IF NOT EXISTS wordcloud_words (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT UNIQUE,
+    weight INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
