@@ -1,25 +1,13 @@
 import os
 import sqlite3
 import pymysql
+from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from config import Config
 
 app = Flask(__name__)
 app.config.from_object(Config)
-
-# In-memory store for Word Cloud keywords (resets on server restart, perfect for MVP)
-WORD_CLOUD_WORDS = [
-    {"text": "Python", "weight": 8},
-    {"text": "Creative", "weight": 5},
-    {"text": "Web", "weight": 6},
-    {"text": "Coding", "weight": 9},
-    {"text": "Fun", "weight": 7},
-    {"text": "Innovation", "weight": 4},
-    {"text": "Summer", "weight": 8},
-    {"text": "Design", "weight": 5},
-    {"text": "Learning", "weight": 6}
-]
 
 # Database Connection Helper (with fallback)
 def get_db_connection():
@@ -167,6 +155,28 @@ def init_db():
     except Exception as e:
         print(f"Error seeding quiz questions: {e}")
 
+    try:
+        wordcloud_count = query_db("SELECT COUNT(*) as cnt FROM wordcloud_words", one=True)
+        if wordcloud_count and wordcloud_count['cnt'] == 0:
+            default_wordcloud_words = [
+                ("Python", 8),
+                ("Creative", 5),
+                ("Web", 6),
+                ("Coding", 9),
+                ("Fun", 7),
+                ("Innovation", 4),
+                ("Summer", 8),
+                ("Design", 5),
+                ("Learning", 6)
+            ]
+            for word, weight in default_wordcloud_words:
+                query_db(
+                    "INSERT INTO wordcloud_words (word, weight) VALUES (%s, %s)",
+                    (word, weight)
+                )
+    except Exception as e:
+        print(f"Error seeding wordcloud words: {e}")
+
 # Helper to find rank
 def get_student_rank(student_id):
     students = query_db("SELECT id FROM students ORDER BY total_score DESC")
@@ -176,6 +186,21 @@ def get_student_rank(student_id):
         if student['id'] == student_id:
             return index + 1
     return len(students)
+
+
+def update_streak(student_id):
+    student = query_db("SELECT streak_days, last_active_date FROM students WHERE id = %s", (student_id,), one=True)
+    if not student:
+        return None
+
+    today = date.today().isoformat()
+    if student.get('last_active_date') != today:
+        streak_days = int(student.get('streak_days') or 0) + 1
+        query_db(
+            "UPDATE students SET streak_days = %s, last_active_date = %s WHERE id = %s",
+            (streak_days, today, student_id)
+        )
+    return query_db("SELECT * FROM students WHERE id = %s", (student_id,), one=True)
 
 # -----------------
 # Flask Routes
@@ -215,6 +240,7 @@ def join():
         )
         
         if student_id:
+            update_streak(student_id)
             session['student_id'] = student_id
             session['student_name'] = name
             session['role'] = 'student'
@@ -233,6 +259,7 @@ def student_dashboard():
         flash('Please join the camp first!', 'error')
         return redirect(url_for('join'))
         
+    update_streak(session['student_id'])
     student = query_db("SELECT * FROM students WHERE id = %s", (session['student_id'],), one=True)
     if not student:
         session.clear()
@@ -402,20 +429,29 @@ def api_award_points():
 
 @app.route('/api/wordcloud/words', methods=['GET', 'POST'])
 def api_wordcloud_words():
-    global WORD_CLOUD_WORDS
     if request.method == 'POST':
         data = request.get_json()
         word = data.get('word', '').strip()
         if word:
-            # Check if word exists
-            found = False
-            for w in WORD_CLOUD_WORDS:
-                if w['text'].lower() == word.lower():
-                    w['weight'] += 1
-                    found = True
-                    break
-            if not found:
-                WORD_CLOUD_WORDS.append({"text": word, "weight": 1})
+            conn, db_type = get_db_connection()
+            try:
+                cursor = conn.cursor()
+                if db_type == 'sqlite':
+                    cursor.execute("INSERT OR IGNORE INTO wordcloud_words (word) VALUES (?)", (word,))
+                    cursor.execute("UPDATE wordcloud_words SET weight = weight + 1 WHERE word = ?", (word,))
+                else:
+                    cursor.execute(
+                        "INSERT INTO wordcloud_words (word, weight) VALUES (%s, 1) ON DUPLICATE KEY UPDATE weight = weight + 1",
+                        (word,)
+                    )
+                conn.commit()
+            except Exception as e:
+                app.logger.error(f"Database error executing wordcloud update: {e}")
+                return jsonify({'error': 'Failed to save word'}), 500
+            finally:
+                conn.close()
+
+            words = query_db("SELECT word, weight FROM wordcloud_words ORDER BY weight DESC, word ASC")
             
             # Award small participation points (5 pts) for student
             if session.get('role') == 'student' and 'student_id' in session:
@@ -428,9 +464,86 @@ def api_wordcloud_words():
                     "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, 5, %s, %s)",
                     (student_id, 'WordCloud', f"Submitted word: {word}")
                 )
-            return jsonify({'success': True, 'words': WORD_CLOUD_WORDS})
-            
-    return jsonify(WORD_CLOUD_WORDS)
+            return jsonify({'success': True, 'words': [{'text': row['word'], 'weight': row['weight']} for row in words] if words else []})
+
+    words = query_db("SELECT word, weight FROM wordcloud_words ORDER BY weight DESC, word ASC")
+    return jsonify([{'text': row['word'], 'weight': row['weight']} for row in words] if words else [])
+
+
+@app.route('/api/buzz/create', methods=['POST'])
+def api_buzz_create():
+    if session.get('role') != 'instructor' or 'instructor_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    level = data.get('level', '').strip()
+    if not level:
+        return jsonify({'error': 'Missing level'}), 400
+
+    session_id = query_db(
+        "INSERT INTO buzz_sessions (instructor_id, level, status) VALUES (%s, %s, 'waiting')",
+        (session['instructor_id'], level)
+    )
+    return jsonify({'success': True, 'id': session_id})
+
+
+@app.route('/api/buzz/session/', methods=['GET'])
+def api_buzz_session():
+    buzz_session_id = request.args.get('session_id') or request.args.get('id')
+    if buzz_session_id:
+        buzz_session = query_db("SELECT * FROM buzz_sessions WHERE id = %s", (buzz_session_id,), one=True)
+    else:
+        buzz_session = query_db("SELECT * FROM buzz_sessions ORDER BY started_at DESC LIMIT 1", one=True)
+
+    if not buzz_session:
+        return jsonify({'error': 'Session not found'}), 404
+
+    return jsonify(buzz_session)
+
+
+@app.route('/api/buzz/respond', methods=['POST'])
+def api_buzz_respond():
+    if session.get('role') != 'student' or 'student_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    question_index = data.get('question_index')
+    answer = data.get('answer', '')
+    is_correct = 1 if data.get('is_correct') else 0
+    points_earned = int(data.get('points_earned', 0))
+
+    if session_id is None or question_index is None:
+        return jsonify({'error': 'Missing parameters'}), 400
+
+    query_db(
+        "INSERT INTO buzz_responses (session_id, student_id, question_index, answer, is_correct, points_earned) VALUES (%s, %s, %s, %s, %s, %s)",
+        (session_id, session['student_id'], question_index, answer, is_correct, points_earned)
+    )
+
+    query_db(
+        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s WHERE id = %s",
+        (points_earned, points_earned, session['student_id'])
+    )
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/buzz/end/', methods=['POST'])
+def api_buzz_end():
+    if session.get('role') != 'instructor' or 'instructor_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+
+    query_db(
+        "UPDATE buzz_sessions SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE id = %s",
+        (session_id,)
+    )
+    return jsonify({'success': True})
 
 @app.route('/logout')
 def logout():
