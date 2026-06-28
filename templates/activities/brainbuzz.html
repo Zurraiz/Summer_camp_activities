@@ -31,7 +31,7 @@
         <h2 style="font-size: 1.6rem; color: #ffffff; margin-bottom: 12px;">Ready for the Challenge?</h2>
         <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 30px auto; line-height: 1.6;">
             You will face 5 random multiple-choice questions matching your registered camp level (<strong>{{ session.student_name or 'Campers' }}</strong>, your level is <strong>{{ session.get('student_level', 'Intermediate') }}</strong>). 
-            You have 15 seconds per question. Correct answers award 10 points!
+            You have 15 seconds per question. The first correct answer earns +15 points, later correct answers earn +10 points, and wrong answers cost -1 point.
         </p>
         <button id="quizStartBtn" class="btn btn-primary">
             <i class="fas fa-play"></i> Start Quiz challenge
@@ -39,7 +39,7 @@
     </div>
 
     <!-- 2. Quiz playing state -->
-    <div id="quizPlay" class="glass-panel hidden" data-level="{{ session.get('student_level', 'Intermediate') }}">
+    <div id="quizPlay" class="glass-panel hidden" data-level="{{ request.args.get('student_level', session.get('student_level', 'Intermediate')) }}">
         <div class="quiz-progress-container">
             <div id="progressBar" class="quiz-progress-bar"></div>
         </div>

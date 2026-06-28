@@ -106,7 +106,14 @@
                         <strong style="display: block; color: #fff;">Launch Quiz Challenge</strong>
                         <span style="font-size: 0.8rem; color: var(--text-secondary);">Direct campers to play BrainBuzz Quiz</span>
                     </div>
-                    <a href="/activity/brainbuzz" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;">Test Quiz</a>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
+                        <select id="buzzLevelSelect" class="form-control" style="min-width: 140px; width: auto; padding: 8px 12px; height: auto;">
+                            <option value="Beginner">Beginner</option>
+                            <option value="Intermediate" selected>Intermediate</option>
+                            <option value="Advanced">Advanced</option>
+                        </select>
+                        <button type="button" id="launchBrainBuzzBtn" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;">Launch Brain Buzz</button>
+                    </div>
                 </div>
                 
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px;">
@@ -115,6 +122,11 @@
                         <span style="font-size: 0.8rem; color: var(--text-secondary);">Camper wordcloud submittals</span>
                     </div>
                     <a href="/activity/wordcloud" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;">WordCloud</a>
+                </div>
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button type="button" id="resetDailyScoresBtn" class="btn btn-secondary" style="flex: 1; min-width: 180px;">Reset Daily Scores</button>
+                    <button type="button" id="resetWeeklyScoresBtn" class="btn btn-secondary" style="flex: 1; min-width: 180px;">Reset Weekly Scores</button>
                 </div>
             </div>
         </div>
@@ -183,6 +195,9 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('awardPointsForm');
     const submitBtn = document.getElementById('submitPointsBtn');
+    const launchBrainBuzzBtn = document.getElementById('launchBrainBuzzBtn');
+    const resetDailyScoresBtn = document.getElementById('resetDailyScoresBtn');
+    const resetWeeklyScoresBtn = document.getElementById('resetWeeklyScoresBtn');
     
     if (form) {
         form.addEventListener('submit', async (e) => {
@@ -227,6 +242,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast("Request failed", "error");
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Grant Award';
+            }
+        });
+    }
+
+    if (launchBrainBuzzBtn) {
+        launchBrainBuzzBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/buzz/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        level: document.getElementById('buzzLevelSelect').value
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/activity/brainbuzz';
+                } else {
+                    showToast(data.error || 'Failed to launch Brain Buzz.', 'error');
+                }
+            } catch (err) {
+                console.error('Error launching Brain Buzz', err);
+                showToast('Failed to launch Brain Buzz.', 'error');
+            }
+        });
+    }
+
+    if (resetDailyScoresBtn) {
+        resetDailyScoresBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/reset-today-scores', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Daily scores reset successfully!', 'success');
+                } else {
+                    showToast(data.error || 'Failed to reset daily scores.', 'error');
+                }
+            } catch (err) {
+                console.error('Error resetting daily scores', err);
+                showToast('Failed to reset daily scores.', 'error');
+            }
+        });
+    }
+
+    if (resetWeeklyScoresBtn) {
+        resetWeeklyScoresBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/reset-week-scores', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Weekly scores reset successfully!', 'success');
+                } else {
+                    showToast(data.error || 'Failed to reset weekly scores.', 'error');
+                }
+            } catch (err) {
+                console.error('Error resetting weekly scores', err);
+                showToast('Failed to reset weekly scores.', 'error');
             }
         });
     }
