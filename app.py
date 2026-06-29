@@ -152,7 +152,7 @@ def init_db():
             ]
             for q in default_questions:
                 query_db(
-                    "INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_answer, topic) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_answer, topic) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     q
                 )
             print("Successfully seeded 20 quiz questions.")
@@ -175,7 +175,7 @@ def init_db():
             ]
             for word, weight in default_wordcloud_words:
                 query_db(
-                    "INSERT INTO wordcloud_words (word, weight) VALUES (%s, %s)",
+                    "INSERT INTO wordcloud_words (word, weight) VALUES (?, ?)",
                     (word, weight)
                 )
     except Exception as e:
@@ -196,7 +196,7 @@ def get_leaderboard_rows(level_filter='', period='daily'):
     score_column = 'week_score' if period == 'weekly' else 'today_score'
     if level_filter in ['Beginner', 'Intermediate', 'Advanced']:
         return query_db(
-            f"SELECT full_name as name, today_score, week_score, grade as level FROM students WHERE grade = %s ORDER BY {score_column} DESC",
+            f"SELECT full_name as name, today_score, week_score, grade as level FROM students WHERE grade = ? ORDER BY {score_column} DESC",
             (level_filter,)
         )
     return query_db(
@@ -205,7 +205,7 @@ def get_leaderboard_rows(level_filter='', period='daily'):
 
 
 def update_streak(student_id):
-    student = query_db("SELECT streak_days, last_active_date FROM students WHERE id = %s", (student_id,), one=True)
+    student = query_db("SELECT streak_days, last_active_date FROM students WHERE id = ?", (student_id,), one=True)
     if not student:
         return None
 
@@ -213,10 +213,10 @@ def update_streak(student_id):
     if student.get('last_active_date') != today:
         streak_days = int(student.get('streak_days') or 0) + 1
         query_db(
-            "UPDATE students SET streak_days = %s, last_active_date = %s WHERE id = %s",
+            "UPDATE students SET streak_days = ?, last_active_date = ? WHERE id = ?",
             (streak_days, today, student_id)
         )
-    return query_db("SELECT * FROM students WHERE id = %s", (student_id,), one=True)
+    return query_db("SELECT * FROM students WHERE id = ?", (student_id,), one=True)
 
 # -----------------
 # Flask Routes
@@ -244,7 +244,7 @@ def login():
             return render_template('login.html', error='Please enter username and password.')
 
         student = query_db(
-            "SELECT id, username, full_name, grade FROM students WHERE username = %s AND password = %s",
+            "SELECT id, username, full_name, grade FROM students WHERE username = ? AND password = ?",
             (username, password),
             one=True
         )
@@ -271,7 +271,7 @@ def student_dashboard():
         
     update_streak(session['student_id'])
     student = query_db(
-        "SELECT id, full_name as name, grade as level, total_score, today_score, week_score, streak_days, last_active_date FROM students WHERE id = %s",
+        "SELECT id, full_name as name, grade as level, total_score, today_score, week_score, streak_days, last_active_date FROM students WHERE id = ?",
         (session['student_id'],),
         one=True
     )
@@ -285,7 +285,7 @@ def student_dashboard():
     
     # Load point events
     history = query_db(
-        "SELECT * FROM point_events WHERE student_id = %s ORDER BY timestamp DESC LIMIT 5",
+        "SELECT * FROM point_events WHERE student_id = ? ORDER BY timestamp DESC LIMIT 5",
         (student['id'],)
     )
     
@@ -297,7 +297,7 @@ def instructor_login():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         
-        instructor = query_db("SELECT * FROM instructors WHERE email = %s", (email,), one=True)
+        instructor = query_db("SELECT * FROM instructors WHERE email = ?", (email,), one=True)
         if instructor and check_password_hash(instructor['password_hash'], password):
             session['instructor_id'] = instructor['id']
             session['instructor_name'] = instructor['name']
@@ -444,7 +444,7 @@ def api_students_delete(student_id):
     if session.get('role') != 'instructor':
         return jsonify({'error': 'Unauthorized'}), 401
 
-    query_db("DELETE FROM students WHERE id = %s", (student_id,))
+    query_db("DELETE FROM students WHERE id = ?", (student_id,))
     return jsonify({'success': True})
 
 @app.route('/api/quiz/questions')
@@ -470,13 +470,13 @@ def api_quiz_submit():
     
     # Update student points
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        "UPDATE students SET total_score = total_score + ?, today_score = today_score + ?, week_score = week_score + ? WHERE id = ?",
         (points_awarded, points_awarded, points_awarded, session['student_id'])
     )
     
     # Record point event
     query_db(
-        "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, %s, %s, %s)",
+        "INSERT INTO point_events (student_id, points, event_type, description) VALUES (?, ?, ?, ?)",
         (session['student_id'], points_awarded, 'Quiz', f'Completed Quiz (Score: {score}/5)')
     )
     
@@ -498,13 +498,13 @@ def api_award_points():
         
     # Update student points
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        "UPDATE students SET total_score = total_score + ?, today_score = today_score + ?, week_score = week_score + ? WHERE id = ?",
         (points, points, points, student_id)
     )
 
     # Record point event
     query_db(
-        "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, %s, %s, %s)",
+        "INSERT INTO point_events (student_id, points, event_type, description) VALUES (?, ?, ?, ?)",
         (student_id, points, event_type, description)
     )
 
@@ -541,7 +541,7 @@ def api_wordcloud_words():
                     cursor.execute("UPDATE wordcloud_words SET weight = weight + 1 WHERE word = ?", (word,))
                 else:
                     cursor.execute(
-                        "INSERT INTO wordcloud_words (word, weight) VALUES (%s, 1) ON DUPLICATE KEY UPDATE weight = weight + 1",
+                        "INSERT INTO wordcloud_words (word) VALUES (?) ON CONFLICT(word) DO UPDATE SET weight = weight + 1",
                         (word,)
                     )
                 conn.commit()
@@ -557,11 +557,11 @@ def api_wordcloud_words():
             if session.get('role') == 'student' and 'student_id' in session:
                 student_id = session['student_id']
                 query_db(
-                    "UPDATE students SET total_score = total_score + 5, today_score = today_score + 5, week_score = week_score + 5 WHERE id = %s",
+                    "UPDATE students SET total_score = total_score + 5, today_score = today_score + 5, week_score = week_score + 5 WHERE id = ?",
                     (student_id,)
                 )
                 query_db(
-                    "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, 5, %s, %s)",
+                    "INSERT INTO point_events (student_id, points, event_type, description) VALUES (?, 5, ?, ?)",
                     (student_id, 'WordCloud', f"Submitted word: {word}")
                 )
             return jsonify({'success': True, 'words': [{'text': row['word'], 'weight': row['weight']} for row in words] if words else []})
@@ -581,7 +581,7 @@ def api_buzz_create():
         return jsonify({'error': 'Missing level'}), 400
 
     session_id = query_db(
-        "INSERT INTO buzz_sessions (instructor_id, level, status) VALUES (%s, %s, 'waiting')",
+        "INSERT INTO buzz_sessions (instructor_id, level, status) VALUES (?, ?, 'waiting')",
         (session['instructor_id'], level)
     )
     return jsonify({'success': True, 'id': session_id})
@@ -589,7 +589,7 @@ def api_buzz_create():
 
 @app.route('/api/buzz/session/<int:session_id>', methods=['GET'])
 def api_buzz_session(session_id):
-    buzz_session = query_db("SELECT * FROM buzz_sessions WHERE id = %s", (session_id,), one=True)
+    buzz_session = query_db("SELECT * FROM buzz_sessions WHERE id = ?", (session_id,), one=True)
 
     if not buzz_session:
         return jsonify({'error': 'Session not found'}), 404
@@ -613,18 +613,18 @@ def api_buzz_respond():
         return jsonify({'error': 'Missing parameters'}), 400
 
     query_db(
-        "INSERT INTO buzz_responses (session_id, student_id, question_index, answer, is_correct, points_earned) VALUES (%s, %s, %s, %s, %s, %s)",
+        "INSERT INTO buzz_responses (session_id, student_id, question_index, answer, is_correct, points_earned) VALUES (?, ?, ?, ?, ?, ?)",
         (session_id, session['student_id'], question_index, answer, is_correct, points_earned)
     )
 
     query_db(
-        "UPDATE students SET total_score = total_score + %s, today_score = today_score + %s, week_score = week_score + %s WHERE id = %s",
+        "UPDATE students SET total_score = total_score + ?, today_score = today_score + ?, week_score = week_score + ? WHERE id = ?",
         (points_earned, points_earned, points_earned, session['student_id'])
     )
 
     if points_earned > 0:
         query_db(
-            "INSERT INTO point_events (student_id, points, event_type, description) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO point_events (student_id, points, event_type, description) VALUES (?, ?, ?, ?)",
             (session['student_id'], points_earned, 'BrainBuzz', 'Brain Buzz answer')
         )
 
@@ -637,7 +637,7 @@ def api_buzz_end(session_id):
         return jsonify({'error': 'Unauthorized'}), 401
 
     query_db(
-        "UPDATE buzz_sessions SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE id = %s",
+        "UPDATE buzz_sessions SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE id = ?",
         (session_id,)
     )
     return jsonify({'success': True})
