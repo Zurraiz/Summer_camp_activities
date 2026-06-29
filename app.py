@@ -129,33 +129,33 @@ def init_db():
         if questions_count and questions_count['cnt'] == 0:
             print("Seeding quiz questions...")
             default_questions = [
-                # Beginner (HTML & CSS)
-                ("What does HTML stand for?", "Hyper Text Markup Language", "High Tech Modern Language", "Hyperlink and Text Markup Language", "Home Tool Markup Language", "A", "Beginner"),
-                ("Which CSS property is used to change the text color?", "text-color", "color", "font-color", "background-color", "B", "Beginner"),
-                ("Which HTML element is used to define the most important heading?", "<head>", "<h6>", "<heading>", "<h1>", "D", "Beginner"),
-                ("How do you make a list that lists items with numbers?", "<ol>", "<ul>", "<list>", "<dl>", "A", "Beginner"),
-                ("What is the correct CSS syntax to make all <p> elements bold?", "p {text-size: bold;}", "p {font-weight: bold;}", "p {font-style: bold;}", "p {font: bold;}", "B", "Beginner"),
-                
-                # Intermediate (JavaScript & Python)
-                ("How do you write 'Hello World' in an alert box in JavaScript?", "msgBox('Hello World');", "alert('Hello World');", "msg('Hello World');", "alertBox('Hello World');", "B", "Intermediate"),
-                ("Which python method is used to add an item to the end of a list?", "add()", "insert()", "append()", "push()", "C", "Intermediate"),
-                ("How do you create a function in Python?", "def myFunction():", "function myFunction()", "create myFunction()", "define myFunction()", "A", "Intermediate"),
-                ("In JavaScript, what is the output of 'typeof []'?", "\"array\"", "\"object\"", "\"list\"", "\"undefined\"", "B", "Intermediate"),
-                ("Which loop is used to execute a block of code a specific number of times?", "for loop", "while loop", "loop-until", "do-while loop", "A", "Intermediate"),
-                
-                # Advanced (Databases & APIs)
-                ("What does SQL stand for?", "Structured Query Language", "Simple Query Language", "Statement Question Language", "Structured Question Layout", "A", "Advanced"),
-                ("Which HTTP method is typically used to update an existing resource?", "GET", "POST", "PUT", "DELETE", "C", "Advanced"),
-                ("Which clause in SQL is used to filter records in a group?", "WHERE", "HAVING", "GROUP BY", "ORDER BY", "B", "Advanced"),
-                ("What is JSON?", "JavaScript Object Notation", "Java System Online Network", "Joint Source Object Namespace", "JavaScript Online Node", "A", "Advanced"),
-                ("What does a 404 HTTP status code represent?", "Unauthorized Access", "Server Error", "Success", "Resource Not Found", "D", "Advanced")
+                ("What does AI stand for?", "Artificial Intelligence", "Automated Interface", "Advanced Integration", "Analog Input", "A", "AI & Robotics"),
+                ("Which of these is an example of Narrow AI?", "A robot that can do any task", "Siri answering voice questions", "A human brain", "Super AI", "B", "AI & Robotics"),
+                ("What is a dataset in machine learning?", "A type of robot sensor", "A collection of examples AI learns from", "A programming language", "A computer chip", "B", "AI & Robotics"),
+                ("What does a robot sensor do?", "Powers the robot motor", "Collects data from the environment", "Stores robot programs", "Controls the display", "B", "AI & Robotics"),
+                ("Which company made the self-driving car Autopilot system?", "Apple", "Google", "Tesla", "Samsung", "C", "AI & Robotics"),
+                ("What type of robot is Roomba?", "Industrial robot", "Medical robot", "Home help robot", "Space robot", "C", "AI & Robotics"),
+                ("What is Machine Learning?", "Programming a robot manually", "Teaching computers to learn from examples", "Building robot arms", "Writing HTML code", "B", "AI & Robotics"),
+                ("AlphaZero mastered chess in how many hours?", "24 hours", "48 hours", "9 hours", "1 hour", "C", "AI & Robotics"),
+                ("What do agricultural drones mainly do?", "Deliver packages", "Photograph crops and check health", "Drive tractors", "Water plants manually", "B", "AI & Robotics"),
+                ("What is the input-process-output model in computing?", "A type of robot", "Data goes in, is processed, result comes out", "A machine learning algorithm", "A sensor type", "B", "AI & Robotics"),
+                ("Which robot explored Mars?", "Talos", "ELIZA", "Curiosity", "Unimate", "C", "AI & Robotics"),
+                ("What year did AI officially begin as a field?", "1944", "1956", "1971", "1982", "B", "AI & Robotics"),
+                ("What is ELIZA?", "A factory robot", "A space probe", "The first chatbot", "A self-driving car", "C", "AI & Robotics"),
+                ("What does sustainability mean in farming?", "Using all resources quickly", "Using resources without harming the environment", "Replacing all farmers with robots", "Growing one crop only", "B", "AI & Robotics"),
+                ("What is a humanoid robot?", "A robot that cleans floors", "A robot made to look and move like a human", "A drone that flies over fields", "A robot arm in a factory", "B", "AI & Robotics"),
+                ("Which AI type can only do one specific task?", "Super AI", "Broad AI", "Narrow AI", "General AI", "C", "AI & Robotics"),
+                ("What is the main job of AI in healthcare?", "Replace all doctors", "Help diagnose illnesses and monitor patients", "Build hospital robots only", "Write medical textbooks", "B", "AI & Robotics"),
+                ("What does IoT stand for?", "Intelligence of Things", "Internet of Things", "Integration of Technology", "Input Output Terminal", "B", "AI & Robotics"),
+                ("What is a neural network inspired by?", "Computer circuits", "The human brain", "Robot sensors", "Solar panels", "B", "AI & Robotics"),
+                ("Which of these is NOT a type of robot?", "Industrial", "Medical", "Emotional", "Social", "C", "AI & Robotics")
             ]
             for q in default_questions:
                 query_db(
                     "INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_answer, topic) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     q
                 )
-            print("Successfully seeded 15 quiz questions.")
+            print("Successfully seeded 20 quiz questions.")
     except Exception as e:
         print(f"Error seeding quiz questions: {e}")
 
@@ -425,7 +425,7 @@ def api_students_bulk_create():
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
         student_id = query_db(
-            "INSERT INTO students (username, password, full_name, grade) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO students (username, password, full_name, grade) VALUES (?, ?, ?, ?)",
             (username, password, name, grade)
         )
         if student_id:
@@ -439,15 +439,10 @@ def api_students_bulk_create():
     return jsonify(created)
 
 
-@app.route('/api/students/delete/', methods=['POST'])
-def api_students_delete():
+@app.route('/api/students/delete/<int:student_id>', methods=['POST'])
+def api_students_delete(student_id):
     if session.get('role') != 'instructor':
         return jsonify({'error': 'Unauthorized'}), 401
-
-    data = request.get_json() or {}
-    student_id = data.get('id')
-    if not student_id:
-        return jsonify({'error': 'Missing student id'}), 400
 
     query_db("DELETE FROM students WHERE id = %s", (student_id,))
     return jsonify({'success': True})
