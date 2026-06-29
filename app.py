@@ -2,6 +2,8 @@ import os
 import json
 import sqlite3
 import time
+import random
+import string
 import pymysql
 from datetime import date
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, Response, stream_with_context
@@ -150,7 +152,7 @@ def init_db():
             ]
             for q in default_questions:
                 query_db(
-                    "INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_option, difficulty) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO quiz_questions (question_text, option_a, option_b, option_c, option_d, correct_answer, topic) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     q
                 )
             print("Successfully seeded 15 quiz questions.")
@@ -194,11 +196,11 @@ def get_leaderboard_rows(level_filter='', period='daily'):
     score_column = 'week_score' if period == 'weekly' else 'today_score'
     if level_filter in ['Beginner', 'Intermediate', 'Advanced']:
         return query_db(
-            f"SELECT name, today_score, week_score, level FROM students WHERE level = %s ORDER BY {score_column} DESC",
+            f"SELECT full_name as name, today_score, week_score, grade as level FROM students WHERE grade = %s ORDER BY {score_column} DESC",
             (level_filter,)
         )
     return query_db(
-        f"SELECT name, today_score, week_score, level FROM students ORDER BY {score_column} DESC"
+        f"SELECT full_name as name, today_score, week_score, grade as level FROM students ORDER BY {score_column} DESC"
     )
 
 
@@ -232,54 +234,53 @@ def index():
     }
     return render_template('index.html', stats=stats)
 
-@app.route('/join', methods=['GET', 'POST'])
-def join():
+@app.route('/login', methods=['GET', 'POST'])
+def login():
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        camp_code = request.form.get('camp_code', '').strip()
-        level = request.form.get('level', 'Beginner')
-        
-        if not name or not camp_code:
-            flash('Please fill in all fields!', 'error')
-            return redirect(url_for('join'))
-        
-        if camp_code != app.config['DEFAULT_CAMP_CODE']:
-            flash('Invalid camp code! Please contact your instructor.', 'error')
-            return redirect(url_for('join'))
-            
-        # Create student record
-        student_id = query_db(
-            "INSERT INTO students (name, camp_code, level, total_score, today_score) VALUES (%s, %s, %s, 0, 0)",
-            (name, camp_code, level)
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+
+        if not username or not password:
+            return render_template('login.html', error='Please enter username and password.')
+
+        student = query_db(
+            "SELECT id, username, full_name, grade FROM students WHERE username = %s AND password = %s",
+            (username, password),
+            one=True
         )
-        
-        if student_id:
-            update_streak(student_id)
-            session['student_id'] = student_id
-            session['student_name'] = name
+
+        if student:
+            update_streak(student['id'])
+            session['student_id'] = student['id']
+            session['student_name'] = student['full_name']
+            session['student_grade'] = student['grade']
             session['role'] = 'student'
-            session['student_level'] = level
-            flash(f'Welcome to Mediatiz, {name}!', 'success')
+            session['student_level'] = student['grade']
+            flash(f"Welcome to Mediatiz, {student['full_name']}!", 'success')
             return redirect(url_for('student_dashboard'))
-        else:
-            flash('Failed to register student.', 'error')
-            return redirect(url_for('join'))
-            
-    return render_template('join.html')
+
+        return render_template('login.html', error='Invalid username or password.')
+
+    return render_template('login.html')
 
 @app.route('/student/dashboard')
 def student_dashboard():
     if session.get('role') != 'student' or 'student_id' not in session:
-        flash('Please join the camp first!', 'error')
-        return redirect(url_for('join'))
+        flash('Please login first!', 'error')
+        return redirect(url_for('login'))
         
     update_streak(session['student_id'])
-    student = query_db("SELECT * FROM students WHERE id = %s", (session['student_id'],), one=True)
+    student = query_db(
+        "SELECT id, full_name as name, grade as level, total_score, today_score, week_score, streak_days, last_active_date FROM students WHERE id = %s",
+        (session['student_id'],),
+        one=True
+    )
     if not student:
         session.clear()
-        return redirect(url_for('join'))
+        return redirect(url_for('login'))
         
     session['student_level'] = student['level']
+    session['student_grade'] = student['level']
     rank = get_student_rank(student['id'])
     
     # Load point events
@@ -313,9 +314,9 @@ def instructor_dashboard():
     if session.get('role') != 'instructor':
         return redirect(url_for('instructor_login'))
         
-    students = query_db("SELECT * FROM students ORDER BY name ASC")
+    students = query_db("SELECT id, full_name as name, grade as level, total_score FROM students ORDER BY full_name ASC")
     recent_events = query_db(
-        "SELECT pe.*, s.name as student_name FROM point_events pe JOIN students s ON pe.student_id = s.id ORDER BY pe.timestamp DESC LIMIT 10"
+        "SELECT pe.*, s.full_name as student_name FROM point_events pe JOIN students s ON pe.student_id = s.id ORDER BY pe.timestamp DESC LIMIT 10"
     )
     
     return render_template('instructor_dashboard.html', students=students, events=recent_events, login_view=False)
@@ -387,16 +388,77 @@ def api_leaderboard_stream():
 
 @app.route('/api/students')
 def api_students():
-    students = query_db("SELECT id, name, level, total_score FROM students ORDER BY name ASC")
+    students = query_db("SELECT id, full_name as name, grade as level, total_score FROM students ORDER BY full_name ASC")
     return jsonify(students if students else [])
+
+
+@app.route('/instructor/students')
+def instructor_students():
+    if session.get('role') != 'instructor':
+        return redirect(url_for('instructor_login'))
+
+    students = query_db("SELECT id, username, full_name, grade, today_score, week_score, total_score, streak_days FROM students ORDER BY full_name ASC")
+    return render_template('instructor_students.html', students=students if students else [])
+
+
+@app.route('/api/students/bulk-create', methods=['POST'])
+def api_students_bulk_create():
+    if session.get('role') != 'instructor':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    names = data.get('names', [])
+    grade = data.get('grade', '').strip()
+
+    if not isinstance(names, list) or not grade:
+        return jsonify({'error': 'Missing parameters'}), 400
+
+    created = []
+    for index, full_name in enumerate(names, start=1):
+        name = str(full_name).strip()
+        if not name:
+            continue
+
+        first_word = name.split()[0].lower()
+        first_word = ''.join(ch for ch in first_word if ch.isalnum())
+        username = f"{first_word}_{index:02d}" if first_word else f"student_{index:02d}"
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+
+        student_id = query_db(
+            "INSERT INTO students (username, password, full_name, grade) VALUES (%s, %s, %s, %s)",
+            (username, password, name, grade)
+        )
+        if student_id:
+            created.append({
+                'full_name': name,
+                'username': username,
+                'password': password,
+                'grade': grade
+            })
+
+    return jsonify(created)
+
+
+@app.route('/api/students/delete/', methods=['POST'])
+def api_students_delete():
+    if session.get('role') != 'instructor':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    student_id = data.get('id')
+    if not student_id:
+        return jsonify({'error': 'Missing student id'}), 400
+
+    query_db("DELETE FROM students WHERE id = %s", (student_id,))
+    return jsonify({'success': True})
 
 @app.route('/api/quiz/questions')
 def api_quiz_questions():
-    difficulty = request.args.get('difficulty', '')
-    if difficulty in ['Beginner', 'Intermediate', 'Advanced']:
-        questions = query_db("SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option FROM quiz_questions WHERE difficulty = %s ORDER BY RANDOM() LIMIT 5" if get_db_connection()[1] == "sqlite" else "SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option FROM quiz_questions WHERE difficulty = %s ORDER BY RAND() LIMIT 5", (difficulty,))
-    else:
-        questions = query_db("SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option FROM quiz_questions ORDER BY RANDOM() LIMIT 5" if get_db_connection()[1] == "sqlite" else "SELECT id, question_text, option_a, option_b, option_c, option_d, correct_option FROM quiz_questions ORDER BY RAND() LIMIT 5")
+    questions = query_db(
+        "SELECT id, question_text, option_a, option_b, option_c, option_d, correct_answer as correct_option FROM quiz_questions ORDER BY RANDOM() LIMIT 5"
+        if get_db_connection()[1] == "sqlite"
+        else "SELECT id, question_text, option_a, option_b, option_c, option_d, correct_answer as correct_option FROM quiz_questions ORDER BY RAND() LIMIT 5"
+    )
         
     return jsonify(questions if questions else [])
 

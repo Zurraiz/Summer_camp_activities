@@ -1,15 +1,25 @@
 -- Students table
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    camp_code TEXT NOT NULL,
-    level TEXT NOT NULL,
-    total_score INTEGER DEFAULT 0,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    grade TEXT NOT NULL,
     today_score INTEGER DEFAULT 0,
     week_score INTEGER DEFAULT 0,
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_score INTEGER DEFAULT 0,
     streak_days INTEGER DEFAULT 0,
-    last_active_date TEXT DEFAULT NULL
+    last_active_date TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Quiz Attempts table
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    attempt_date TEXT NOT NULL,
+    score INTEGER DEFAULT 0,
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Instructors table
@@ -40,8 +50,9 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
     option_b TEXT NOT NULL,
     option_c TEXT NOT NULL,
     option_d TEXT NOT NULL,
-    correct_option TEXT NOT NULL,
-    difficulty TEXT DEFAULT 'Intermediate'
+    correct_answer TEXT NOT NULL,
+    topic TEXT DEFAULT 'AI & Robotics',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Brain Buzz Sessions table
