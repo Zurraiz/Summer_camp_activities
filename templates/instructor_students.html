@@ -1,0 +1,432 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Students | Mediatiz Camp{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+    .students-page {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .students-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+
+    .students-toolbar h1 {
+        margin: 0;
+        font-size: 2rem;
+        color: #ffffff;
+    }
+
+    .students-toolbar p {
+        margin-top: 8px;
+        color: var(--text-secondary);
+    }
+
+    .table-wrap {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 720px;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .data-table th {
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+    }
+
+    .data-table td {
+        color: #ffffff;
+        font-size: 0.92rem;
+    }
+
+    .data-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .student-note {
+        margin-top: 10px;
+        color: var(--warning);
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .results-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 14px;
+    }
+
+    .inline-form-grid {
+        display: grid;
+        grid-template-columns: 1.8fr 1fr;
+        gap: 16px;
+    }
+
+    @media (max-width: 960px) {
+        .inline-form-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .muted-empty {
+        color: var(--text-muted);
+        text-align: center;
+        padding: 18px 0;
+    }
+
+    .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 9999px;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #fff;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="students-page">
+    <div class="glass-panel">
+        <div class="students-toolbar">
+            <div>
+                <span class="pill"><i class="fas fa-users"></i> Student Management</span>
+                <h1>Bulk Create Students</h1>
+                <p>Paste student names, choose a grade, and create login credentials in one step.</p>
+            </div>
+            <button type="button" id="downloadCsvBtn" class="btn btn-secondary">
+                <i class="fas fa-download"></i> Download CSV
+            </button>
+        </div>
+
+        <form id="bulkCreateForm">
+            <div class="inline-form-grid">
+                <div class="form-group">
+                    <label for="studentNames" class="form-label">Student Names</label>
+                    <textarea id="studentNames" class="form-control" rows="10" placeholder="Paste one student name per line" required></textarea>
+                </div>
+                <div>
+                    <div class="form-group">
+                        <label for="gradeSelect" class="form-label">Grade</label>
+                        <select id="gradeSelect" class="form-control" required>
+                            <option value="">-- Select grade --</option>
+                            <option value="Grade 6-8">Grade 6-8</option>
+                            <option value="Grade 9-10">Grade 9-10</option>
+                            <option value="Grade 11-12">Grade 11-12</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" style="margin-top: 6px;">
+                        <i class="fas fa-user-plus"></i> Create Students
+                    </button>
+                    <p class="student-note">Save these passwords now — they cannot be shown again</p>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="glass-panel">
+        <div class="students-toolbar" style="margin-bottom: 16px;">
+            <div>
+                <h2 style="font-size: 1.35rem; margin: 0;">Created Students</h2>
+                <p style="margin: 6px 0 0 0;">Passwords are only visible immediately after creation.</p>
+            </div>
+        </div>
+
+        <div class="results-actions">
+            <span id="createdCount" class="pill" style="display: none;"></span>
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table" id="createdStudentsTable">
+                <thead>
+                    <tr>
+                        <th>Full Name</th>
+                        <th>Username</th>
+                        <th>Password</th>
+                        <th>Grade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr id="createdStudentsEmptyRow">
+                        <td colspan="4" class="muted-empty">No students created yet.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="glass-panel">
+        <div class="students-toolbar" style="margin-bottom: 16px;">
+            <div>
+                <h2 style="font-size: 1.35rem; margin: 0;">Existing Students</h2>
+                <p style="margin: 6px 0 0 0;">Loaded automatically from the student list API on page load.</p>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table" id="existingStudentsTable">
+                <thead>
+                    <tr>
+                        <th>Full Name</th>
+                        <th>Username</th>
+                        <th>Grade</th>
+                        <th>Today Score</th>
+                        <th>Week Score</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody id="existingStudentsBody">
+                    <tr>
+                        <td colspan="6" class="muted-empty">Loading students...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const bulkCreateForm = document.getElementById('bulkCreateForm');
+    const studentNames = document.getElementById('studentNames');
+    const gradeSelect = document.getElementById('gradeSelect');
+    const createdStudentsTableBody = document.querySelector('#createdStudentsTable tbody');
+    const createdStudentsEmptyRow = document.getElementById('createdStudentsEmptyRow');
+    const createdCount = document.getElementById('createdCount');
+    const existingStudentsBody = document.getElementById('existingStudentsBody');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+    let createdStudents = [];
+    let existingStudents = [];
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function renderCreatedStudents() {
+        if (createdStudentsEmptyRow) {
+            createdStudentsEmptyRow.remove();
+        }
+
+        createdStudentsTableBody.querySelectorAll('tr[data-created-row="1"]').forEach(row => row.remove());
+
+        if (!createdStudents.length) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.id = 'createdStudentsEmptyRow';
+            emptyRow.innerHTML = '<td colspan="4" class="muted-empty">No students created yet.</td>';
+            createdStudentsTableBody.appendChild(emptyRow);
+            createdCount.style.display = 'none';
+            return;
+        }
+
+        createdStudents.forEach(student => {
+            const row = document.createElement('tr');
+            row.setAttribute('data-created-row', '1');
+            row.innerHTML = `
+                <td>${escapeHtml(student.full_name)}</td>
+                <td>${escapeHtml(student.username)}</td>
+                <td>${escapeHtml(student.password)}</td>
+                <td>${escapeHtml(student.grade)}</td>
+            `;
+            createdStudentsTableBody.appendChild(row);
+        });
+
+        createdCount.style.display = 'inline-flex';
+        createdCount.textContent = `${createdStudents.length} created student${createdStudents.length === 1 ? '' : 's'}`;
+    }
+
+    function renderExistingStudents() {
+        existingStudentsBody.innerHTML = '';
+
+        if (!existingStudents.length) {
+            existingStudentsBody.innerHTML = '<tr><td colspan="6" class="muted-empty">No students found.</td></tr>';
+            return;
+        }
+
+        existingStudents.forEach(student => {
+            const row = document.createElement('tr');
+            row.setAttribute('data-student-id', student.id);
+            row.innerHTML = `
+                <td>${escapeHtml(student.full_name || student.name || '')}</td>
+                <td>${escapeHtml(student.username || '')}</td>
+                <td>${escapeHtml(student.grade || student.level || '')}</td>
+                <td>${escapeHtml(student.today_score ?? 0)}</td>
+                <td>${escapeHtml(student.week_score ?? 0)}</td>
+                <td>
+                    <button type="button" class="btn btn-secondary btn-delete-student" data-student-id="${student.id}" style="padding: 8px 14px; font-size: 0.82rem;">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </td>
+            `;
+            existingStudentsBody.appendChild(row);
+        });
+
+        existingStudentsBody.querySelectorAll('.btn-delete-student').forEach(button => {
+            button.addEventListener('click', handleDeleteStudent);
+        });
+    }
+
+    async function loadExistingStudents() {
+        try {
+            const response = await fetch('/api/students');
+            const data = await response.json();
+            existingStudents = Array.isArray(data) ? data.map(student => ({
+                ...student,
+                full_name: student.full_name || student.name || '',
+                grade: student.grade || student.level || '',
+                today_score: student.today_score ?? 0,
+                week_score: student.week_score ?? 0
+            })) : [];
+            renderExistingStudents();
+        } catch (error) {
+            console.error('Failed to load students', error);
+            existingStudentsBody.innerHTML = '<tr><td colspan="6" class="muted-empty">Failed to load students.</td></tr>';
+        }
+    }
+
+    async function handleBulkCreate(event) {
+        event.preventDefault();
+
+        const names = studentNames.value
+            .split('\n')
+            .map(name => name.trim())
+            .filter(Boolean);
+
+        const grade = gradeSelect.value;
+
+        if (!names.length || !grade) {
+            showToast('Please enter at least one student name and choose a grade.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/students/bulk-create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ names, grade })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                showToast(data.error || 'Failed to create students.', 'error');
+                return;
+            }
+
+            createdStudents = Array.isArray(data) ? data : [];
+            renderCreatedStudents();
+            showToast(`Created ${createdStudents.length} student${createdStudents.length === 1 ? '' : 's'}.`, 'success');
+        } catch (error) {
+            console.error('Bulk create failed', error);
+            showToast('Failed to create students.', 'error');
+        }
+    }
+
+    async function handleDeleteStudent(event) {
+        const button = event.currentTarget;
+        const studentId = button.getAttribute('data-student-id');
+        if (!studentId) return;
+
+        try {
+            let response = await fetch('/api/students/delete/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: studentId })
+            });
+
+            if (!response.ok) {
+                response = await fetch(`/api/students/delete/${studentId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ id: studentId })
+                });
+            }
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                showToast(data.error || 'Failed to delete student.', 'error');
+                return;
+            }
+
+            existingStudents = existingStudents.filter(student => String(student.id) !== String(studentId));
+            renderExistingStudents();
+            showToast('Student deleted.', 'success');
+        } catch (error) {
+            console.error('Delete failed', error);
+            showToast('Failed to delete student.', 'error');
+        }
+    }
+
+    function exportCreatedCsv() {
+        if (!createdStudents.length) {
+            showToast('No created students to export.', 'error');
+            return;
+        }
+
+        const header = ['Full Name', 'Username', 'Password', 'Grade'];
+        const rows = createdStudents.map(student => [student.full_name, student.username, student.password, student.grade]);
+        const csvContent = [header, ...rows]
+            .map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'created_students.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    bulkCreateForm.addEventListener('submit', handleBulkCreate);
+    downloadCsvBtn.addEventListener('click', exportCreatedCsv);
+    loadExistingStudents();
+    renderCreatedStudents();
+});
+</script>
+{% endblock %}
